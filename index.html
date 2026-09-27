@@ -579,6 +579,7 @@ async function loadDB(){
     if(!DB.messages)DB.messages={};
     if(!DB.notifications)DB.notifications=[];
     if(!DB.pendingUsers)DB.pendingUsers=[];
+    DB.pendingUsers=DB.pendingUsers.filter(u=>u&&u.email&&u.name);
     // Always keep manager credentials correct
     const mgr=DB.users.find(u=>u.role==='manager');
     if(mgr){mgr.email='shammah488@gmail.com';mgr.pass='56781234';mgr.id='m1';}
@@ -624,10 +625,10 @@ function startPolling(){
   // Seed message counts so we don't notify on messages already read at login
   if(currentUser){
     if(currentUser.role==='manager'){
-      Object.keys(DB.messages).forEach(invId=>{_seenMsgCount[invId]=(DB.messages[invId]||[]).length;});
+      Object.keys(DB.messages).forEach(invId=>{_seenMsgCount[invId]=toArr(DB.messages[invId]).length;});
       DB.investors.forEach(inv=>{_seenFundReqs[inv.id]=(inv.fundRequests||[]).length;});
     } else {
-      _seenMsgCount[currentUser.id]=(DB.messages[currentUser.id]||[]).length;
+      _seenMsgCount[currentUser.id]=toArr(DB.messages[currentUser.id]).length;
     }
   }
   _poll=setInterval(async()=>{
@@ -651,7 +652,7 @@ function startPolling(){
       });
       // Check for new investor messages
       Object.keys(DB.messages).forEach(invId=>{
-        const thread=DB.messages[invId]||[];
+        const thread=toArr(DB.messages[invId]);
         const prev=_seenMsgCount[invId]||0;
         const newMsgs=thread.slice(prev).filter(m=>m.from==='investor');
         if(newMsgs.length>0){
@@ -689,7 +690,7 @@ function startPolling(){
       if(detailTarget){renderDetailChat();}
     }
     if(currentUser.role==='investor'){
-      const thread=DB.messages[currentUser.id]||[];
+      const thread=toArr(DB.messages[currentUser.id]);
       const prev=_seenMsgCount[currentUser.id]||0;
       const newMsgs=thread.slice(prev).filter(m=>m.from==='manager');
       if(newMsgs.length>0){
@@ -824,7 +825,7 @@ function toggleNotifPanel(){
 }
 function renderNotifPanel(){
   const el=document.getElementById('notifList');
-  const pending=DB.pendingUsers||[];
+  const pending=(DB.pendingUsers||[]).filter(u=>u&&u.email&&u.name);
   let html='';
   if(currentUser&&currentUser.role==='manager'&&pending.length>0){
     html+=`<div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.07em;color:var(--gold);margin-bottom:10px;padding:0 2px">Pending Approvals (${pending.length})</div>`;
@@ -1026,7 +1027,7 @@ function saveBankDetailsForm(bankName){
   refreshBankUI();
 }
 function sendBankDetailsAsMsg(inv,text){
-  DB.messages[inv.id]=DB.messages[inv.id]||[];
+  DB.messages[inv.id]=toArr(DB.messages[inv.id]);
   DB.messages[inv.id].push({from:'investor',text,date:now(),tag:'Withdrawal Request'});
   _sm();
 }
@@ -1329,7 +1330,7 @@ function renderDetailStatusArea(){
 
 function renderPending(){
   const wrap=document.getElementById('pendingWrap');if(!wrap)return;
-  const pending=DB.pendingUsers||[];
+  const pending=(DB.pendingUsers||[]).filter(u=>u&&u.email&&u.name);
   if(!pending.length){wrap.innerHTML='<div class="table-wrap" style="padding:22px;color:var(--muted);font-size:0.85rem">No pending approvals.</div>';return;}
   wrap.innerHTML=`<div style="margin-bottom:12px;font-size:0.82rem;color:var(--muted)">${pending.length} account${pending.length>1?'s':''} awaiting approval.</div>
     <div style="display:flex;flex-direction:column;gap:12px">${pending.map(u=>`
@@ -1621,14 +1622,14 @@ function quickBalance(field,action){
   input.value='';if(noteEl)noteEl.value='';saveDB();detailTarget=inv;renderBalanceCards();renderInvestorTable();renderMgStats();
 }
 function renderDetailChat(){
-  const msgs=(DB.messages[detailTarget.id]||[]);const box=document.getElementById('detailChat');
+  const msgs=toArr(DB.messages[detailTarget.id]);const box=document.getElementById('detailChat');
   if(!msgs.length){box.innerHTML='<p style="color:var(--muted);font-size:0.82rem;text-align:center;margin-top:40px">No messages yet.</p>';return;}
   box.innerHTML=msgs.map(m=>`<div class="msg ${m.from==='manager'?'from-mgr':'from-me'}">${m.tag?`<div style="display:inline-block;background:var(--gold-dim);color:var(--gold);font-size:0.66rem;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;padding:2px 8px;border-radius:20px;margin-bottom:5px">🏦 ${m.tag}</div>`:''}<div style="white-space:pre-wrap">${m.text}</div><div class="msg-meta">${m.from==='manager'?'Manager':'Investor'} · ${m.date}</div></div>`).join('');
   box.scrollTop=box.scrollHeight;
 }
 function mgrSendMsg(){
   const input=document.getElementById('mgrReplyInput');const text=input.value.trim();if(!text)return;
-  DB.messages[detailTarget.id]=DB.messages[detailTarget.id]||[];
+  DB.messages[detailTarget.id]=toArr(DB.messages[detailTarget.id]);
   DB.messages[detailTarget.id].push({from:'manager',text,date:now()});
   // Store pending notification for investor so they see it when they poll
   DB.investors.forEach(inv=>{
@@ -1909,13 +1910,13 @@ function renderInvestorMessages(){
 function updateInvChatBox(){
   const box=document.getElementById('invChatBox');
   if(!box){renderInvestorMessages();return;}
-  const msgs=(DB.messages[currentUser.id]||[]);
+  const msgs=toArr(DB.messages[currentUser.id]);
   box.innerHTML=!msgs.length?'<p style="color:var(--muted);font-size:0.82rem;text-align:center;margin-top:40px">No messages yet. Send a message to your portfolio manager.</p>':msgs.map(m=>`<div class="msg ${m.from==='investor'?'from-me':'from-mgr'}">${m.tag?`<div style="display:inline-block;background:var(--gold-dim);color:var(--gold);font-size:0.66rem;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;padding:2px 8px;border-radius:20px;margin-bottom:5px">🏦 ${m.tag}</div>`:''}<div style="white-space:pre-wrap">${m.text}</div><div class="msg-meta">${m.from==='manager'?'Manager':'You'} · ${m.date}</div></div>`).join('');
   box.scrollTop=box.scrollHeight;
 }
 function invSendMsg(){
   const input=document.getElementById('invMsgInput');const text=input.value.trim();if(!text)return;
-  DB.messages[currentUser.id]=DB.messages[currentUser.id]||[];
+  DB.messages[currentUser.id]=toArr(DB.messages[currentUser.id]);
   DB.messages[currentUser.id].push({from:'investor',text,date:now()});
   addNotif(`New message from ${currentUser.name}.`,'msg');
   // Push notification for manager (fires if manager is on this device/tab)
