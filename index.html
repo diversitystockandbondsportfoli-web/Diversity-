@@ -575,7 +575,8 @@ async function loadDB(){
       if(msgs&&typeof msgs==='object'&&!Array.isArray(msgs))DB.messages=msgs;
       if(procs)DB.processes=toArr(procs);
     }
-    if(!DB.processes||!DB.processes.length)DB.processes=JSON.parse(JSON.stringify(DEFAULT_PROCESSES));
+    DB.processes=(DB.processes||[]).filter(p=>p&&p.id&&typeof p.title==='string');
+    if(!DB.processes.length)DB.processes=JSON.parse(JSON.stringify(DEFAULT_PROCESSES));
     if(!DB.messages)DB.messages={};
     if(!DB.notifications)DB.notifications=[];
     if(!DB.pendingUsers)DB.pendingUsers=[];
@@ -593,7 +594,7 @@ async function loadDB(){
       DB.investors.push({id:'inv_test1',name:'Nichole Dorfan',email:'adejoh437@gmail.com',currency:'USD',deposit:12500,returns:2750,withdrawal:0,availableWithdraw:5000,payrollActive:true,activationFeeTotal:4000,activationFeePaid:4000,capitalRequirementActive:false,capitalRequirementAmount:10000,status:'active',joined:'Jan 1, 2025',txs:[],fundRequests:[]});
     else{const ti=DB.investors.find(i=>i.id==='inv_test1');ti.name='Nichole Dorfan';ti.activationFeeTotal=4000;ti.activationFeePaid=4000;ti.payrollActive=true;if(!ti.deposit&&!ti.returns&&!ti.availableWithdraw){ti.deposit=12500;ti.returns=2750;ti.availableWithdraw=5000;}}
     // Save both back to Firebase so the accounts persist
-    if(FB_READY){await fbSet('users',DB.users);await fbSet('investors',DB.investors);}
+    if(FB_READY){await fbSet('users',DB.users);await fbSet('investors',DB.investors);await fbSet('pendingUsers',DB.pendingUsers);await fbSet('processes',DB.processes);}
     else try{localStorage.setItem('dsbp_v5',JSON.stringify(DB));}catch(e){}
   }catch(e){console.error('DB load error',e);}
   hideLoader();
@@ -637,7 +638,7 @@ function startPolling(){
       fbGet('investors'),fbGet('pendingUsers'),fbGet('notifications'),fbGet('messages')
     ]);
     if(investors)DB.investors=toArr(investors);
-    if(pending)DB.pendingUsers=toArr(pending);
+    if(pending){DB.pendingUsers=toArr(pending).filter(u=>u&&u.email&&u.name);if(FB_READY)fbSet('pendingUsers',DB.pendingUsers);}
     if(notifs)DB.notifications=toArr(notifs);
     if(msgs&&typeof msgs==='object'&&!Array.isArray(msgs))DB.messages=msgs;
     updateNotifBadge();
@@ -878,7 +879,7 @@ function openProcessViewer(){
     el.innerHTML=steps.map((p,i)=>`
       <div class="process-view-card" style="display:flex;gap:14px;align-items:flex-start">
         <div style="width:36px;height:36px;border-radius:50%;background:var(--gold);display:flex;align-items:center;justify-content:center;font-family:'Cormorant Garamond',serif;font-size:1rem;font-weight:700;color:#0A0C0F;flex-shrink:0">${i+1}</div>
-        <div><div class="pv-title">${p.title}</div><div class="pv-body">${p.body}</div></div>
+        <div><div class="pv-title">${p.title||''}</div><div class="pv-body">${p.body||''}</div></div>
       </div>`).join('');
   }
   document.getElementById('processViewerOverlay').classList.remove('hidden');
@@ -1395,7 +1396,7 @@ function renderProcessStepCard(p,i){
   return `<div class="process-step-card ${p.active?'':'inactive-step'}" id="pcard_${p.id}">
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
       <div class="step-num">${displayNum}</div>
-      <div style="flex:1;font-weight:600;font-size:0.9rem">${p.title}</div>
+      <div style="flex:1;font-weight:600;font-size:0.9rem">${p.title||''}</div>
       <div style="display:flex;gap:6px;align-items:center">
         <button onclick="movePStep('${p.id}',-1)" title="Move up" style="width:28px;height:28px;border-radius:6px;border:1px solid var(--border);background:var(--dark4);color:var(--muted);cursor:pointer;font-size:0.85rem" ${i===0?'disabled':''}>↑</button>
         <button onclick="movePStep('${p.id}',1)" title="Move down" style="width:28px;height:28px;border-radius:6px;border:1px solid var(--border);background:var(--dark4);color:var(--muted);cursor:pointer;font-size:0.85rem" ${i===steps.length-1?'disabled':''}>↓</button>
@@ -1405,11 +1406,11 @@ function renderProcessStepCard(p,i){
     </div>
     <div class="field" style="margin-bottom:10px">
       <label>Step Title</label>
-      <input type="text" value="${p.title.replace(/"/g,'&quot;')}" id="ptitle_${p.id}" placeholder="e.g. Registration" style="background:var(--dark2)">
+      <input type="text" value="${(p.title||'').replace(/"/g,'&quot;')}" id="ptitle_${p.id}" placeholder="e.g. Registration" style="background:var(--dark2)">
     </div>
     <div class="field" style="margin-bottom:10px">
       <label>Description</label>
-      <textarea id="pbody_${p.id}" rows="3" placeholder="Describe this step…" style="background:var(--dark2)">${p.body}</textarea>
+      <textarea id="pbody_${p.id}" rows="3" placeholder="Describe this step…" style="background:var(--dark2)">${p.body||''}</textarea>
     </div>
     <button onclick="savePStep('${p.id}')" style="padding:8px 18px;background:var(--gold);color:#0A0C0F;border:none;border-radius:7px;font-family:'DM Sans',sans-serif;font-size:0.82rem;font-weight:700;cursor:pointer" onmouseover="this.style.background='var(--gold-light)'" onmouseout="this.style.background='var(--gold)'">Save Step</button>
   </div>`;
