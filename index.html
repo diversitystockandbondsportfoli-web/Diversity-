@@ -1078,7 +1078,7 @@ function fpStep1Next(){
   const email=document.getElementById('fpEmail').value.trim().toLowerCase();
   const err=document.getElementById('fpErr1');
   if(!email){err.textContent='Please enter your email.';err.classList.remove('hidden');return;}
-  const user=DB.users.find(u=>u.email.toLowerCase()===email&&u.role==='investor');
+  const user=DB.users.find(u=>u.email&&u.email.toLowerCase()===email&&u.role==='investor');
   if(!user){err.textContent='No investor account found with that email.';err.classList.remove('hidden');return;}
   fpResolvedUser=user;err.classList.add('hidden');showFpStep(2);
 }
@@ -1108,7 +1108,7 @@ function doLogin(){
   err.classList.add('hidden');
 
   // Check pending — use lowercased email for comparison
-  const pending=(DB.pendingUsers||[]).find(u=>u.email.toLowerCase()===email);
+  const pending=(DB.pendingUsers||[]).find(u=>u.email&&u.email.toLowerCase()===email);
   if(pending){
     // If password also matches, give clearer message
     err.textContent='Your account is pending manager approval. Please wait.';
@@ -1117,7 +1117,7 @@ function doLogin(){
 
   // Find approved user — compare emails lowercased, passwords exactly
   const user=DB.users.find(u=>
-    u.email.toLowerCase()===email &&
+    u.email&&u.email.toLowerCase()===email &&
     u.pass===pass &&
     u.role===authMode
   );
@@ -1151,8 +1151,8 @@ async function doRegister(){
   err.classList.add('hidden');ok.classList.add('hidden');
   if(!name||!email||!pass){err.textContent='All fields required.';err.classList.remove('hidden');return;}
   if(pass.length<6){err.textContent='Password must be at least 6 characters.';err.classList.remove('hidden');return;}
-  const alreadyUser=DB.users.find(u=>u.email.toLowerCase()===email);
-  const alreadyPending=(DB.pendingUsers||[]).find(u=>u.email.toLowerCase()===email);
+  const alreadyUser=DB.users.find(u=>u.email&&u.email.toLowerCase()===email);
+  const alreadyPending=(DB.pendingUsers||[]).find(u=>u.email&&u.email.toLowerCase()===email);
   if(alreadyUser||alreadyPending){err.textContent='Email already registered.';err.classList.remove('hidden');return;}
   // Always store email lowercased so login always works
   const nu={id:'u'+Date.now(),email,pass,role:'investor',name,joined:now()};
@@ -1279,7 +1279,7 @@ function renderMgStats(){
 }
 
 function renderInvestorTable(filter=''){
-  const inv=DB.investors.filter(i=>i.name.toLowerCase().includes(filter.toLowerCase())||i.email.toLowerCase().includes(filter.toLowerCase()));
+  const inv=DB.investors.filter(i=>(i.name||'').toLowerCase().includes(filter.toLowerCase())||(i.email||'').toLowerCase().includes(filter.toLowerCase()));
   const wrap=document.getElementById('investorTableWrap');
   if(!inv.length){wrap.innerHTML='<p style="padding:22px;color:var(--muted);font-size:0.85rem">No investors found.</p>';return;}
   wrap.innerHTML=`<table><thead><tr><th>Name</th><th>Currency</th><th>Deposit</th><th>Returns</th><th>Net</th><th>Status</th><th>Actions</th></tr></thead><tbody>${inv.map(i=>`
