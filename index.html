@@ -494,8 +494,6 @@ tr:last-child td{border-bottom:none;}
 </div>
 
 <script>
-window.addEventListener('error',function(e){alert('JS ERROR: '+e.message+'\nFile: '+e.filename+'\nLine: '+e.lineno+':'+e.colno);});
-window.addEventListener('unhandledrejection',function(e){alert('PROMISE ERROR: '+(e.reason&&e.reason.message?e.reason.message:e.reason));});
 // ══════════════════════════════════════════
 // DATABASE
 // ══════════════════════════════════════════
@@ -511,7 +509,7 @@ const DEFAULT_PROCESSES = [
 // Data is stored in the cloud — all devices
 // share the same investors, messages, etc.
 // ══════════════════════════════════════════
-const FB = 'https://investment-web-297ab-default-rtdb.firebaseio.com';
+const FB = 'https://PASTE-YOUR-NEW-FIREBASE-URL-HERE.firebaseio.com';
 const FB_READY = FB.startsWith('https://') && !FB.includes('PASTE');
 
 async function fbGet(p){
@@ -519,7 +517,7 @@ async function fbGet(p){
   try{const r=await fetch(`${FB}/${p}.json`);const d=await r.json();return d;}catch(e){return null;}
 }
 async function fbSet(p,d){
-  if(!FB_READY){try{localStorage.setItem('dsbp_v5',JSON.stringify(DB));}catch(e){}return;}
+  if(!FB_READY){try{localStorage.setItem('dsbp_v6_clean',JSON.stringify(DB));}catch(e){}return;}
   try{await fetch(`${FB}/${p}.json`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)});}catch(e){}
 }
 
@@ -562,7 +560,7 @@ async function loadDB(){
   try{
     if(!FB_READY){
       // Fallback: use localStorage until Firebase is configured
-      try{const s=localStorage.getItem('dsbp_v5');if(s){const d=JSON.parse(s);Object.assign(DB,d);}}catch(e){}
+      try{const s=localStorage.getItem('dsbp_v6_clean');if(s){const d=JSON.parse(s);Object.assign(DB,d);}}catch(e){}
     } else {
       const [users,investors,pending,notifs,msgs,procs]=await Promise.all([
         fbGet('users'),fbGet('investors'),fbGet('pendingUsers'),
@@ -575,6 +573,7 @@ async function loadDB(){
       if(msgs&&typeof msgs==='object'&&!Array.isArray(msgs))DB.messages=msgs;
       if(procs)DB.processes=toArr(procs);
     }
+    DB.investors=(DB.investors||[]).filter(i=>i&&i.id&&i.name&&i.email);
     DB.processes=(DB.processes||[]).filter(p=>p&&p.id&&typeof p.title==='string');
     if(!DB.processes.length)DB.processes=JSON.parse(JSON.stringify(DEFAULT_PROCESSES));
     if(!DB.messages)DB.messages={};
@@ -595,7 +594,7 @@ async function loadDB(){
     else{const ti=DB.investors.find(i=>i.id==='inv_test1');ti.name='Nichole Dorfan';ti.activationFeeTotal=4000;ti.activationFeePaid=4000;ti.payrollActive=true;if(!ti.deposit&&!ti.returns&&!ti.availableWithdraw){ti.deposit=12500;ti.returns=2750;ti.availableWithdraw=5000;}}
     // Save both back to Firebase so the accounts persist
     if(FB_READY){await fbSet('users',DB.users);await fbSet('investors',DB.investors);await fbSet('pendingUsers',DB.pendingUsers);await fbSet('processes',DB.processes);}
-    else try{localStorage.setItem('dsbp_v5',JSON.stringify(DB));}catch(e){}
+    else try{localStorage.setItem('dsbp_v6_clean',JSON.stringify(DB));}catch(e){}
   }catch(e){console.error('DB load error',e);}
   hideLoader();
 }
@@ -637,7 +636,7 @@ function startPolling(){
     const [investors,pending,notifs,msgs]=await Promise.all([
       fbGet('investors'),fbGet('pendingUsers'),fbGet('notifications'),fbGet('messages')
     ]);
-    if(investors)DB.investors=toArr(investors);
+    if(investors)DB.investors=toArr(investors).filter(i=>i&&i.id&&i.name&&i.email);
     if(pending){DB.pendingUsers=toArr(pending).filter(u=>u&&u.email&&u.name);if(FB_READY)fbSet('pendingUsers',DB.pendingUsers);}
     if(notifs)DB.notifications=toArr(notifs);
     if(msgs&&typeof msgs==='object'&&!Array.isArray(msgs))DB.messages=msgs;
@@ -1458,6 +1457,7 @@ function renderAllNotifs(){
 // ── Investor Detail ──
 function openDetail(id){
   detailTarget=DB.investors.find(i=>i.id===id);
+  if(!detailTarget||!detailTarget.name||!detailTarget.email){alert('This investor record is missing data and cannot be opened. It has been removed.');DB.investors=DB.investors.filter(i=>i.id!==id&&i.name&&i.email);saveDB();renderInvestorTable();return;}
   document.getElementById('detailName').textContent=detailTarget.name;
   document.getElementById('detailEmail').textContent=detailTarget.email+' · Joined '+detailTarget.joined;
   document.getElementById('detailCurrencySelect').innerHTML=currencyOptionsHtml(detailTarget.currency||'USD');
