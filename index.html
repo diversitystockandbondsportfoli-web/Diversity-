@@ -394,6 +394,7 @@ tr:last-child td{border-bottom:none;}
     </div>
     <div style="font-size:0.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:10px;margin-top:16px">Balance Management</div>
     <div id="balanceCards" style="display:flex;flex-direction:column;gap:12px;margin-bottom:20px"></div>
+    <div id="detailPlans" style="margin-bottom:20px"></div>
     <div style="font-size:0.82rem;font-weight:600;margin-bottom:10px">Messages</div>
     <div class="chat-box" id="detailChat"></div>
     <div class="chat-input-row">
@@ -494,6 +495,25 @@ tr:last-child td{border-bottom:none;}
 </div>
 
 <script>
+// ── FIREBASE CONFIG (project: investment-2d904, Belgium europe-west1) ──
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyAEdnHFDK-toy-YvHE2pyLs7mQ8pB32W64",
+  authDomain: "investment-2d904.firebaseapp.com",
+  databaseURL: "https://investment-2d904-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "investment-2d904",
+  storageBucket: "investment-2d904.firebasestorage.app",
+  messagingSenderId: "930571951725",
+  appId: "1:930571951725:web:844c420a4467bb27bea964"
+};
+</script>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+import { getDatabase } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-database.js";
+const app = initializeApp(FIREBASE_CONFIG);
+window.fbApp = app;
+window.fbDb = getDatabase(app);
+</script>
+<script>
 // ══════════════════════════════════════════
 // DATABASE
 // ══════════════════════════════════════════
@@ -504,20 +524,27 @@ const DEFAULT_PROCESSES = [
   {id:'p4',title:'Payrolls Activation',body:'Your payroll returns are activated and begin reflecting on your investor dashboard. Track your investment returns, portfolio growth, and performance in real time.',active:true},
 ];
 
+const DEFAULT_PLANS = [
+  {id:'plan1',name:'Starter Growth Plan',description:'An entry-level plan spread across stocks and bonds, suited to first-time investors.',minAmount:1000,returnRate:'To be confirmed',duration:'6 months',available:true},
+  {id:'plan2',name:'Balanced Portfolio Plan',description:'A balanced mix of equities and bonds aimed at steady, diversified growth.',minAmount:5000,returnRate:'To be confirmed',duration:'12 months',available:true},
+  {id:'plan3',name:'Premium Bond Plan',description:'A bond-focused plan for investors who prefer a more conservative approach.',minAmount:10000,returnRate:'To be confirmed',duration:'12 months',available:true},
+  {id:'plan4',name:'Elite Wealth Plan',description:'A long-term, higher-capital plan managed directly by your portfolio manager.',minAmount:25000,returnRate:'To be confirmed',duration:'18 months',available:true},
+];
+
 // ══════════════════════════════════════════
 // FIREBASE REALTIME DATABASE
 // Data is stored in the cloud — all devices
 // share the same investors, messages, etc.
 // ══════════════════════════════════════════
-const FB = 'https://investment-27856-default-rtdb.firebaseio.com';
-const FB_READY = FB.startsWith('https://') && !FB.includes('PASTE');
+const FB = FIREBASE_CONFIG.databaseURL;
+const FB_READY = true;
 
 async function fbGet(p){
   if(!FB_READY)return null;
   try{const r=await fetch(`${FB}/${p}.json`);const d=await r.json();return d;}catch(e){return null;}
 }
 async function fbSet(p,d){
-  if(!FB_READY){try{localStorage.setItem('dsbp_v6_clean',JSON.stringify(DB));}catch(e){}return;}
+  if(!FB_READY){try{localStorage.setItem('dsbp_v7_fresh',JSON.stringify(DB));}catch(e){}return;}
   try{await fetch(`${FB}/${p}.json`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)});}catch(e){}
 }
 
@@ -540,7 +567,8 @@ const BANKS = ['JPMorgan Chase','Bank of America','Wells Fargo','Citibank','U.S.
 let DB = {
   users:[{id:'m1',email:'shammah488@gmail.com',pass:'56781234',role:'manager',name:'Portfolio Manager'},{id:'inv_test1',email:'adejoh437@gmail.com',pass:'1111111',role:'investor',name:'Nichole Dorfan'}],
   investors:[{id:'inv_test1',name:'Nichole Dorfan',email:'adejoh437@gmail.com',currency:'USD',deposit:12500,returns:2750,withdrawal:0,availableWithdraw:5000,payrollActive:true,activationFeeTotal:4000,activationFeePaid:4000,capitalRequirementActive:false,capitalRequirementAmount:10000,status:'active',joined:'Jan 1, 2025',txs:[],fundRequests:[]}],pendingUsers:[],notifications:[],messages:{},
-  processes:JSON.parse(JSON.stringify(DEFAULT_PROCESSES))
+  processes:JSON.parse(JSON.stringify(DEFAULT_PROCESSES)),
+  plans:JSON.parse(JSON.stringify(DEFAULT_PLANS))
 };
 
 function showLoader(msg){
@@ -560,12 +588,13 @@ async function loadDB(){
   try{
     if(!FB_READY){
       // Fallback: use localStorage until Firebase is configured
-      try{const s=localStorage.getItem('dsbp_v6_clean');if(s){const d=JSON.parse(s);Object.assign(DB,d);}}catch(e){}
+      try{const s=localStorage.getItem('dsbp_v7_fresh');if(s){const d=JSON.parse(s);Object.assign(DB,d);}}catch(e){}
     } else {
-      const [users,investors,pending,notifs,msgs,procs]=await Promise.all([
+      const [users,investors,pending,notifs,msgs,procs,plansRaw]=await Promise.all([
         fbGet('users'),fbGet('investors'),fbGet('pendingUsers'),
-        fbGet('notifications'),fbGet('messages'),fbGet('processes')
+        fbGet('notifications'),fbGet('messages'),fbGet('processes'),fbGet('plans')
       ]);
+      if(plansRaw&&plansRaw.v)DB.plans=toArr(plansRaw.list);
       if(users)DB.users=toArr(users);
       if(investors)DB.investors=toArr(investors);
       if(pending)DB.pendingUsers=toArr(pending);
@@ -574,6 +603,7 @@ async function loadDB(){
       if(procs)DB.processes=toArr(procs);
     }
     DB.investors=(DB.investors||[]).filter(i=>i&&i.id&&i.name&&i.email);
+    DB.plans=(DB.plans||[]).filter(p=>p&&p.id&&typeof p.name==='string');
     DB.processes=(DB.processes||[]).filter(p=>p&&p.id&&typeof p.title==='string');
     if(!DB.processes.length)DB.processes=JSON.parse(JSON.stringify(DEFAULT_PROCESSES));
     if(!DB.messages)DB.messages={};
@@ -594,7 +624,7 @@ async function loadDB(){
     else{const ti=DB.investors.find(i=>i.id==='inv_test1');ti.name='Nichole Dorfan';ti.activationFeeTotal=4000;ti.activationFeePaid=4000;ti.payrollActive=true;if(!ti.deposit&&!ti.returns&&!ti.availableWithdraw){ti.deposit=12500;ti.returns=2750;ti.availableWithdraw=5000;}}
     // Save both back to Firebase so the accounts persist
     if(FB_READY){await fbSet('users',DB.users);await fbSet('investors',DB.investors);await fbSet('pendingUsers',DB.pendingUsers);await fbSet('processes',DB.processes);}
-    else try{localStorage.setItem('dsbp_v6_clean',JSON.stringify(DB));}catch(e){}
+    else try{localStorage.setItem('dsbp_v7_fresh',JSON.stringify(DB));}catch(e){}
   }catch(e){console.error('DB load error',e);}
   hideLoader();
 }
@@ -612,6 +642,8 @@ async function _si(){await fbSet('investors',DB.investors);}
 async function _sp(){await fbSet('pendingUsers',DB.pendingUsers);}
 async function _sn(){await fbSet('notifications',DB.notifications);}
 async function _sm(){await fbSet('messages',DB.messages);}
+async function _spl(){await fbSet('plans',{v:1,list:DB.plans});}
+function escHtml(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 
 // Poll every 8s so manager sees new registrations live
 let _poll=null;
@@ -633,9 +665,10 @@ function startPolling(){
   }
   _poll=setInterval(async()=>{
     if(!currentUser)return;
-    const [investors,pending,notifs,msgs]=await Promise.all([
-      fbGet('investors'),fbGet('pendingUsers'),fbGet('notifications'),fbGet('messages')
+    const [investors,pending,notifs,msgs,plansRaw]=await Promise.all([
+      fbGet('investors'),fbGet('pendingUsers'),fbGet('notifications'),fbGet('messages'),fbGet('plans')
     ]);
+    if(plansRaw&&plansRaw.v)DB.plans=toArr(plansRaw.list).filter(p=>p&&p.id&&typeof p.name==='string');
     if(investors)DB.investors=toArr(investors).filter(i=>i&&i.id&&i.name&&i.email);
     if(pending){DB.pendingUsers=toArr(pending).filter(u=>u&&u.email&&u.name);if(FB_READY)fbSet('pendingUsers',DB.pendingUsers);}
     if(notifs)DB.notifications=toArr(notifs);
@@ -687,7 +720,7 @@ function startPolling(){
         if(ap.id==='mgOverview')renderMgStats();
       }
       // Refresh open investor chat
-      if(detailTarget){renderDetailChat();}
+      if(detailTarget){renderDetailChat();renderDetailPlans();}
     }
     if(currentUser.role==='investor'){
       const thread=toArr(DB.messages[currentUser.id]);
@@ -705,10 +738,12 @@ function startPolling(){
       const inv=DB.investors.find(i=>i.id===currentUser.id);
       if(inv&&inv.pendingMsgNotif&&inv.pendingMsgNotif.length){
         inv.pendingMsgNotif=[];await _si();}
+      if(_planGated&&inv&&!needsPlan(inv)){buildInvestorApp();return;}
       const ap=document.querySelector('.page.active');
       if(ap&&ap.id==='invMessages')updateInvChatBox();
       if(ap&&ap.id==='invDash')renderInvestorDash();
       if(ap&&ap.id==='invFunds')updateInvFundsBalances();
+      if(ap&&ap.id==='invPlans')renderInvestorPlans();
     }
   },8000);
 }
@@ -1172,7 +1207,7 @@ async function approveUser(id){
     DB.users.push({id:u.id,email:approvedEmail,pass:u.pass,role:'investor',name:u.name});
   }
   if(!DB.investors.find(x=>x.id===u.id)){
-    DB.investors.push({id:u.id,name:u.name,email:approvedEmail,currency:'USD',deposit:0,returns:0,withdrawal:0,availableWithdraw:0,payrollActive:false,activationFeeTotal:4000,activationFeePaid:0,capitalRequirementActive:false,capitalRequirementAmount:10000,status:'active',joined:u.joined||now(),txs:[],fundRequests:[]});
+    DB.investors.push({id:u.id,name:u.name,email:approvedEmail,currency:'USD',planRequired:true,deposit:0,returns:0,withdrawal:0,availableWithdraw:0,payrollActive:false,activationFeeTotal:4000,activationFeePaid:0,capitalRequirementActive:false,capitalRequirementAmount:10000,status:'active',joined:u.joined||now(),txs:[],fundRequests:[]});
   }
   DB.pendingUsers=DB.pendingUsers.filter(p=>p.id!==id);
   addNotif(`✓ ${u.name} approved — they can now log in.`,'info');
@@ -1225,6 +1260,7 @@ function buildManagerApp(){
     <div class="nav-item" id="nav_mgInvestors" onclick="mgNav('mgInvestors')"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>Investors</div>
     <div class="nav-item" id="nav_mgPending" onclick="mgNav('mgPending')"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>Approvals${pc()>0?`<span class="nav-badge">${pc()}</span>`:''}</div>
     <div class="nav-item" id="nav_mgRequests" onclick="mgNav('mgRequests')"><svg viewBox="0 0 24 24"><path d="M12 2v20M2 12h20"/></svg>Fund Requests</div>
+    <div class="nav-item" id="nav_mgPlans" onclick="mgNav('mgPlans')"><svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2"/></svg>Investment Plans</div>
     <div class="nav-item" id="nav_mgProcesses" onclick="mgNav('mgProcesses')"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>Processes</div>
     <div class="nav-item" id="nav_mgNotifs" onclick="mgNav('mgNotifs')"><svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>Notifications</div>
     <div class="nav-item" id="nav_mgSettings" onclick="mgNav('mgSettings')"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>Settings</div>`;
@@ -1233,6 +1269,7 @@ function buildManagerApp(){
     <button class="bn-item active" id="bn_mgOverview" onclick="mgNavM('mgOverview',this)"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>Overview</button>
     <button class="bn-item" id="bn_mgInvestors" onclick="mgNavM('mgInvestors',this)"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>Investors</button>
     <button class="bn-item" id="bn_mgPending" onclick="mgNavM('mgPending',this)">${pc()>0?`<span class="bn-badge">${pc()}</span>`:''}<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>Approvals</button>
+    <button class="bn-item" id="bn_mgPlans" onclick="mgNavM('mgPlans',this)"><svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2"/></svg>Plans</button>
     <button class="bn-item" id="bn_mgProcesses" onclick="mgNavM('mgProcesses',this)"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>Process</button>
     <button class="bn-item" id="bn_mgSettings" onclick="mgNavM('mgSettings',this)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>Settings</button>
     <button class="bn-logout" onclick="logout()"><svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>Out</button>`;
@@ -1243,6 +1280,7 @@ function buildManagerApp(){
       <div class="table-wrap"><div class="table-header"><h3>All Investors</h3><input class="search-bar" placeholder="Search…" oninput="filterInvestors(this.value)"></div><div id="investorTableWrap" class="table-scroll"></div></div></div>
     <div class="page" id="mgPending"><div class="page-header"><div class="page-header-text"><h2>Pending Approvals</h2><p>New account requests</p></div></div><div id="pendingWrap"></div></div>
     <div class="page" id="mgRequests"><div class="page-header"><div class="page-header-text"><h2>Fund Requests</h2><p>Deposit & withdrawal requests</p></div></div><div id="fundRequestsWrap"></div></div>
+    <div class="page" id="mgPlans"><div class="page-header"><div class="page-header-text"><h2>Investment Plans</h2><p>Plans investors can choose from. Switch a plan off to mark it unavailable.</p></div></div><div id="mgPlansContent"></div></div>
     <div class="page" id="mgProcesses"><div class="page-header"><div class="page-header-text"><h2>Registration Process</h2><p>Edit the steps investors see when they tap "Process"</p></div></div><div id="mgProcessContent"></div></div>
     <div class="page" id="mgNotifs"><div class="page-header"><div class="page-header-text"><h2>Notifications</h2><p>All system alerts</p></div></div><div id="allNotifsWrap"></div></div>
     <div class="page" id="mgSettings"><div class="page-header"><div class="page-header-text"><h2>Settings</h2><p>Security & preferences</p></div></div><div id="mgSettingsContent"></div></div>`;
@@ -1259,6 +1297,7 @@ function mgNav(pid){
   if(pid==='mgInvestors')renderInvestorTable();
   if(pid==='mgPending')renderPending();
   if(pid==='mgRequests')renderFundRequests();
+  if(pid==='mgPlans')renderMgPlans();
   if(pid==='mgProcesses')renderMgrProcesses();
   if(pid==='mgNotifs')renderAllNotifs();
   if(pid==='mgSettings')renderSettings('mgSettingsContent');
@@ -1448,6 +1487,153 @@ function addProcessStep(){
   setTimeout(()=>{const el=document.getElementById('pcard_'+newStep.id);if(el)el.scrollIntoView({behavior:'smooth',block:'start'});},100);
 }
 
+// ══════════════════════════════════════════
+// INVESTMENT PLANS
+// ══════════════════════════════════════════
+const PLAN_BTN="padding:8px 16px;background:var(--gold);color:#0A0C0F;border:none;border-radius:7px;font-family:'DM Sans',sans-serif;font-size:0.82rem;font-weight:700;cursor:pointer";
+
+// ── Manager: manage plans ──
+function renderMgPlans(){
+  const wrap=document.getElementById('mgPlansContent');if(!wrap)return;
+  const plans=DB.plans||[];
+  const avail=plans.filter(p=>p.available).length;
+  wrap.innerHTML=`
+    <div style="margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+      <div style="font-size:0.82rem;color:var(--muted)">${avail} of ${plans.length} plan${plans.length===1?'':'s'} available to investors</div>
+      <button onclick="addPlan()" style="${PLAN_BTN};display:flex;align-items:center;gap:6px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>Add Plan</button>
+    </div>
+    <div id="plansList">${plans.length?plans.map(renderPlanEditCard).join(''):'<div class="table-wrap" style="padding:22px;color:var(--muted);font-size:0.85rem">No plans yet. Tap "Add Plan" to create one.</div>'}</div>
+    <div class="ok hidden" id="planOk" style="text-align:center;margin-top:12px"></div>`;
+}
+function renderPlanEditCard(p){
+  const on=!!p.available;
+  return `<div class="process-step-card ${on?'':'inactive-step'}" id="plcard_${p.id}">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+      <div style="flex:1;font-weight:600;font-size:0.95rem;min-width:120px">${escHtml(p.name)}</div>
+      <span class="badge ${on?'active':'inactive'}">${on?'Available':'Unavailable'}</span>
+      <button onclick="togglePlan('${p.id}')" style="padding:5px 12px;border-radius:6px;border:1px solid ${on?'rgba(224,92,92,0.3)':'rgba(76,175,124,0.3)'};background:${on?'rgba(224,92,92,0.1)':'rgba(76,175,124,0.1)'};color:${on?'var(--red)':'var(--green)'};font-size:0.74rem;cursor:pointer;font-family:'DM Sans',sans-serif">${on?'Make Unavailable':'Make Available'}</button>
+      <button onclick="deletePlan('${p.id}')" title="Delete plan" style="width:28px;height:28px;border-radius:6px;border:1px solid rgba(224,92,92,0.25);background:rgba(224,92,92,0.08);color:var(--red);cursor:pointer;font-size:0.9rem">×</button>
+    </div>
+    <div class="field" style="margin-bottom:10px"><label>Plan Name</label><input type="text" id="pl_name_${p.id}" value="${escHtml(p.name)}" style="background:var(--dark2)"></div>
+    <div class="field" style="margin-bottom:10px"><label>Description</label><textarea id="pl_desc_${p.id}" rows="3" style="background:var(--dark2)">${escHtml(p.description)}</textarea></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px">
+      <div class="field" style="margin-bottom:10px"><label>Minimum Amount</label><input type="number" min="0" id="pl_min_${p.id}" value="${p.minAmount!=null?p.minAmount:''}" style="background:var(--dark2)"></div>
+      <div class="field" style="margin-bottom:10px"><label>Expected Return</label><input type="text" id="pl_ret_${p.id}" value="${escHtml(p.returnRate)}" placeholder="e.g. 8% monthly" style="background:var(--dark2)"></div>
+      <div class="field" style="margin-bottom:10px"><label>Duration</label><input type="text" id="pl_dur_${p.id}" value="${escHtml(p.duration)}" placeholder="e.g. 12 months" style="background:var(--dark2)"></div>
+    </div>
+    <button onclick="savePlan('${p.id}')" style="${PLAN_BTN}">Save Plan</button>
+  </div>`;
+}
+function readPlanFields(id){
+  const p=DB.plans.find(x=>x.id===id);if(!p)return null;
+  const g=k=>{const el=document.getElementById('pl_'+k+'_'+id);return el?el.value:null;};
+  const name=g('name');if(name!==null&&name.trim())p.name=name.trim();
+  const desc=g('desc');if(desc!==null)p.description=desc.trim();
+  const min=g('min');if(min!==null)p.minAmount=min===''?0:Math.max(0,parseFloat(min)||0);
+  const ret=g('ret');if(ret!==null)p.returnRate=ret.trim();
+  const dur=g('dur');if(dur!==null)p.duration=dur.trim();
+  return p;
+}
+function planToast(msg){const ok=document.getElementById('planOk');if(!ok)return;ok.textContent=msg;ok.classList.remove('hidden');setTimeout(()=>ok.classList.add('hidden'),2000);}
+function savePlan(id){if(!readPlanFields(id))return;_spl();renderMgPlans();planToast('Plan saved!');}
+function togglePlan(id){const p=readPlanFields(id);if(!p)return;p.available=!p.available;_spl();renderMgPlans();planToast(p.available?'Plan is now available':'Plan marked unavailable');}
+function deletePlan(id){if(!confirm('Delete this plan? Investors who already selected it keep their selection.'))return;DB.plans=DB.plans.filter(x=>x.id!==id);_spl();renderMgPlans();}
+function addPlan(){
+  const np={id:'plan'+Date.now(),name:'New Plan',description:'Describe this plan here.',minAmount:1000,returnRate:'',duration:'',available:false};
+  DB.plans.push(np);_spl();renderMgPlans();
+  setTimeout(()=>{const el=document.getElementById('plcard_'+np.id);if(el)el.scrollIntoView({behavior:'smooth',block:'start'});},100);
+}
+
+// ── Investor: browse & select ──
+function planStatusBadge(s){return s==='active'?'<span class="badge active">Confirmed</span>':'<span class="badge pending">Awaiting manager</span>';}
+function renderInvestorPlans(){
+  const wrap=document.getElementById('invPlansContent');if(!wrap)return;
+  const inv=getInv();
+  if(!inv){wrap.innerHTML='<p style="color:var(--muted)">Your profile is being set up.</p>';return;}
+  const plans=DB.plans||[];
+  const sels=toArr(inv.planSelections);
+  const mine=sels.length?`
+    <div class="table-wrap" style="padding:18px;margin-bottom:20px">
+      <div style="font-size:0.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:12px">My Plan Selections</div>
+      ${sels.map(s=>`<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-top:1px solid var(--border);flex-wrap:wrap">
+        <div><div style="font-weight:600;font-size:0.9rem">${escHtml(s.planName)}</div><div style="font-size:0.74rem;color:var(--muted)">${escHtml(s.date)}</div></div>
+        <div style="display:flex;align-items:center;gap:8px">${planStatusBadge(s.status)}${s.status!=='active'?`<button onclick="cancelPlanSelection('${s.id}')" style="padding:4px 10px;border-radius:6px;border:1px solid rgba(224,92,92,0.3);background:rgba(224,92,92,0.1);color:var(--red);font-size:0.72rem;cursor:pointer;font-family:'DM Sans',sans-serif">Cancel</button>`:''}</div>
+      </div>`).join('')}
+    </div>`:'';
+  const cards=plans.length?plans.map(p=>{
+    const on=!!p.available;
+    const taken=sels.some(s=>s.planId===p.id);
+    const row=(l,v)=>`<div style="display:flex;justify-content:space-between;gap:10px;font-size:0.82rem;margin-bottom:6px"><span style="color:var(--muted)">${l}</span><span style="text-align:right">${v}</span></div>`;
+    return `<div style="background:var(--dark2);border:1px solid ${on?'rgba(201,168,76,0.35)':'var(--border)'};border-radius:14px;padding:20px;display:flex;flex-direction:column;opacity:${on?'1':'0.55'}">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:8px">
+        <div style="font-family:'Cormorant Garamond',serif;font-size:1.25rem;font-weight:600;color:${on?'var(--gold)':'var(--muted)'}">${escHtml(p.name)}</div>
+        <span class="badge ${on?'active':'inactive'}">${on?'Available':'Unavailable'}</span>
+      </div>
+      <div style="font-size:0.84rem;color:var(--muted);line-height:1.55;margin-bottom:14px;flex:1">${escHtml(p.description)}</div>
+      ${row('Minimum',money(inv,p.minAmount||0))}
+      ${row('Expected return',escHtml(p.returnRate)||'—')}
+      ${row('Duration',escHtml(p.duration)||'—')}
+      <button ${on&&!taken?'':'disabled'} onclick="selectPlan('${p.id}')" style="margin-top:10px;padding:11px 0;border:none;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:0.86rem;font-weight:700;cursor:${on&&!taken?'pointer':'not-allowed'};background:${on&&!taken?'var(--gold)':'var(--dark4)'};color:${on&&!taken?'#0A0C0F':'var(--muted)'}">${!on?'Currently unavailable':taken?'Already selected':'Select this plan'}</button>
+    </div>`;
+  }).join(''):'<div class="table-wrap" style="padding:22px;color:var(--muted);font-size:0.85rem">No investment plans have been published yet. Please check back soon.</div>';
+  const gateNote=(_planGated&&!plans.some(p=>p.available))?'<div class="table-wrap" style="padding:16px 18px;margin-bottom:16px;color:var(--gold);font-size:0.85rem">No plans are open right now. This page updates automatically as soon as your manager makes one available.</div>':'';
+  wrap.innerHTML=`${gateNote}${mine}<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px">${cards}</div>`;
+}
+async function selectPlan(planId){
+  const inv=getInv();const p=(DB.plans||[]).find(x=>x.id===planId);
+  if(!inv||!p)return;
+  if(!p.available){alert('This plan is currently unavailable.');renderInvestorPlans();return;}
+  if(toArr(inv.planSelections).some(s=>s.planId===planId)){alert('You have already selected this plan.');return;}
+  if(!confirm('Select the "'+p.name+'" plan? Your portfolio manager will be notified.'))return;
+  inv.planSelections=toArr(inv.planSelections);
+  inv.planSelections.push({id:'ps'+Date.now(),planId:p.id,planName:p.name,date:now(),status:'pending'});
+  DB.messages[inv.id]=toArr(DB.messages[inv.id]);
+  DB.messages[inv.id].push({from:'investor',text:'I would like to invest in the "'+p.name+'" plan.',date:now(),tag:'Plan Selection'});
+  addNotif(inv.name+' selected the "'+p.name+'" investment plan.','info');
+  sendPushNotif('📈 Plan Selected — DSBP',inv.name+' selected the "'+p.name+'" plan.','dsbp-plan-'+inv.id);
+  await Promise.all([_si(),_sm()]);
+  if(_planGated){alert('Plan selected! Your manager has been notified. Welcome aboard.');buildInvestorApp();}
+  else renderInvestorPlans();
+}
+function cancelPlanSelection(selId){
+  const inv=getInv();if(!inv)return;
+  const s=toArr(inv.planSelections).find(x=>x.id===selId);
+  if(!s||s.status==='active')return;
+  if(!confirm('Cancel your selection of "'+s.planName+'"?'))return;
+  inv.planSelections=toArr(inv.planSelections).filter(x=>x.id!==selId);
+  addNotif(inv.name+' cancelled the "'+s.planName+'" plan selection.','info');
+  _si();
+  if(needsPlan(inv))buildInvestorApp();else renderInvestorPlans();
+}
+
+// ── Manager: see & confirm what an investor selected ──
+function renderDetailPlans(){
+  const box=document.getElementById('detailPlans');if(!box||!detailTarget)return;
+  const inv=DB.investors.find(i=>i.id===detailTarget.id);if(!inv){box.innerHTML='';return;}
+  const sels=toArr(inv.planSelections);
+  box.innerHTML=`<div style="font-size:0.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:10px">Selected Investment Plans</div>`+
+    (sels.length?sels.map(s=>`<div style="background:var(--dark3);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+      <div><div style="font-weight:600;font-size:0.88rem">${escHtml(s.planName)}</div><div style="font-size:0.72rem;color:var(--muted)">${escHtml(s.date)}</div></div>
+      <div style="display:flex;align-items:center;gap:8px">${planStatusBadge(s.status)}
+        ${s.status!=='active'?`<button onclick="confirmPlanSel('${inv.id}','${s.id}')" style="padding:5px 11px;border-radius:6px;border:1px solid rgba(76,175,124,0.3);background:rgba(76,175,124,0.1);color:var(--green);font-size:0.74rem;cursor:pointer;font-family:'DM Sans',sans-serif">Confirm</button>`:''}
+        <button onclick="removePlanSel('${inv.id}','${s.id}')" style="padding:5px 11px;border-radius:6px;border:1px solid rgba(224,92,92,0.3);background:rgba(224,92,92,0.1);color:var(--red);font-size:0.74rem;cursor:pointer;font-family:'DM Sans',sans-serif">Remove</button>
+      </div></div>`).join(''):'<div style="font-size:0.82rem;color:var(--muted)">No plan selected yet.</div>');
+}
+function confirmPlanSel(invId,selId){
+  const inv=DB.investors.find(i=>i.id===invId);if(!inv)return;
+  const s=toArr(inv.planSelections).find(x=>x.id===selId);if(!s)return;
+  s.status='active';
+  DB.messages[invId]=toArr(DB.messages[invId]);
+  DB.messages[invId].push({from:'manager',text:'Your selection of the "'+s.planName+'" plan has been confirmed.',date:now()});
+  _si();_sm();renderDetailPlans();renderDetailChat();
+}
+function removePlanSel(invId,selId){
+  if(!confirm('Remove this plan selection?'))return;
+  const inv=DB.investors.find(i=>i.id===invId);if(!inv)return;
+  inv.planSelections=toArr(inv.planSelections).filter(x=>x.id!==selId);
+  _si();renderDetailPlans();
+}
+
 function renderAllNotifs(){
   const wrap=document.getElementById('allNotifsWrap');if(!wrap)return;
   if(!DB.notifications.length){wrap.innerHTML='<div class="table-wrap" style="padding:22px;color:var(--muted);font-size:0.85rem">No notifications.</div>';return;}
@@ -1462,7 +1648,7 @@ function openDetail(id){
   document.getElementById('detailEmail').textContent=detailTarget.email+' · Joined '+detailTarget.joined;
   document.getElementById('detailCurrencySelect').innerHTML=currencyOptionsHtml(detailTarget.currency||'USD');
   renderDetailStatusArea();
-  renderBalanceCards();renderDetailChat();
+  renderBalanceCards();renderDetailPlans();renderDetailChat();
   document.getElementById('detailOverlay').classList.remove('hidden');
 }
 function closeDetail(){document.getElementById('detailOverlay').classList.add('hidden');detailTarget=null;}
@@ -1691,10 +1877,26 @@ function changePassword(){
 // ══════════════════════════════════════════
 // INVESTOR APP
 // ══════════════════════════════════════════
+let _planGated=false;
+function needsPlan(inv){return !!(inv&&inv.planRequired&&toArr(inv.planSelections).length===0);}
+function buildPlanGate(){
+  const inv=getInv();
+  const icon='<svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2"/></svg>';
+  document.getElementById('sidebarNav').innerHTML=`<div class="nav-item active" id="nav_invPlans">${icon}Choose a Plan</div>`;
+  document.getElementById('bottomnav').innerHTML=`
+    <button class="bn-item active" id="bn_invPlans">${icon}Plans</button>
+    <button class="bn-logout" onclick="logout()"><svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>Out</button>`;
+  document.getElementById('mainContent').innerHTML=`
+    <div class="page active" id="invPlans"><div class="page-header"><div class="page-header-text"><h2>Welcome, ${escHtml(inv?inv.name:currentUser.name)}</h2><p>Your account is approved. Choose an investment plan to continue to your dashboard.</p></div></div><div id="invPlansContent"></div></div>`;
+  renderInvestorPlans();
+}
 function buildInvestorApp(){
+  _planGated=needsPlan(getInv());
+  if(_planGated){buildPlanGate();return;}
   document.getElementById('sidebarNav').innerHTML=`
     <div class="nav-item active" id="nav_invDash" onclick="invNav('invDash')"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>Dashboard</div>
     <div class="nav-item" id="nav_invPortfolio" onclick="invNav('invPortfolio')"><svg viewBox="0 0 24 24"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>Portfolio</div>
+    <div class="nav-item" id="nav_invPlans" onclick="invNav('invPlans')"><svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2"/></svg>Investment Plans</div>
     <div class="nav-item" id="nav_invFunds" onclick="invNav('invFunds')"><svg viewBox="0 0 24 24"><path d="M12 2v20M2 12h20"/></svg>Deposit / Withdraw</div>
     <div class="nav-item" id="nav_invTx" onclick="invNav('invTx')"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h8"/></svg>Transactions</div>
     <div class="nav-item" id="nav_invMessages" onclick="invNav('invMessages')"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>Messages</div>
@@ -1703,6 +1905,7 @@ function buildInvestorApp(){
   document.getElementById('bottomnav').innerHTML=`
     <button class="bn-item active" id="bn_invDash" onclick="invNavM('invDash',this)"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>Home</button>
     <button class="bn-item" id="bn_invPortfolio" onclick="invNavM('invPortfolio',this)"><svg viewBox="0 0 24 24"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>Portfolio</button>
+    <button class="bn-item" id="bn_invPlans" onclick="invNavM('invPlans',this)"><svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2"/></svg>Plans</button>
     <button class="bn-item" id="bn_invFunds" onclick="invNavM('invFunds',this)"><svg viewBox="0 0 24 24"><path d="M12 2v20M2 12h20"/></svg>Funds</button>
     <button class="bn-item" id="bn_invMessages" onclick="invNavM('invMessages',this)"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>Messages</button>
     <button class="bn-item" id="bn_invSettings" onclick="invNavM('invSettings',this)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>Settings</button>`;
@@ -1710,6 +1913,7 @@ function buildInvestorApp(){
   document.getElementById('mainContent').innerHTML=`
     <div class="page active" id="invDash"><div class="page-header"><div class="page-header-text"><h2>Dashboard</h2><p>Your investment overview</p></div></div><div id="invDashContent"></div></div>
     <div class="page" id="invPortfolio"><div class="page-header"><div class="page-header-text"><h2>Portfolio</h2><p>Performance & breakdown</p></div></div><div id="invPortfolioContent"></div></div>
+    <div class="page" id="invPlans"><div class="page-header"><div class="page-header-text"><h2>Investment Plans</h2><p>Choose a plan to invest in</p></div></div><div id="invPlansContent"></div></div>
     <div class="page" id="invFunds"><div class="page-header"><div class="page-header-text"><h2>Deposit / Withdraw</h2><p>Manage your funds</p></div></div><div id="invFundsContent"></div></div>
     <div class="page" id="invTx"><div class="page-header"><div class="page-header-text"><h2>Transactions</h2><p>Full history</p></div></div><div class="table-wrap" id="invTxContent"></div></div>
     <div class="page" id="invMessages"><div class="page-header"><div class="page-header-text"><h2>Messages</h2><p>Communicate with management</p></div></div><div id="invMessagesContent"></div></div>
@@ -1719,12 +1923,14 @@ function buildInvestorApp(){
 }
 
 function invNav(pid){
+  if(_planGated&&pid!=='invPlans')return;
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   const el=document.getElementById('nav_'+pid);if(el)el.classList.add('active');
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.getElementById(pid).classList.add('active');
   if(pid==='invDash')renderInvestorDash();
   if(pid==='invPortfolio')renderInvestorPortfolio();
+  if(pid==='invPlans')renderInvestorPlans();
   if(pid==='invFunds')renderInvestorFunds(true);
   if(pid==='invTx')renderInvestorTx();
   if(pid==='invMessages')renderInvestorMessages();
